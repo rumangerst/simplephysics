@@ -9,6 +9,7 @@ import net.minecraft.init.Blocks;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
+import net.minecraft.world.WorldType;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import net.minecraftforge.fml.common.registry.ForgeRegistries;
@@ -84,6 +85,9 @@ public class WorldPhysics {
                 Blocks.GRASS,
                 Blocks.TALLGRASS
         };
+        if(world.getWorldInfo().getTerrainType() == WorldType.FLAT) {
+            this.anchorHeight = 0;
+        }
     }
 
     public boolean isAirOrIgnored(BlockPos pos) {
@@ -143,6 +147,11 @@ public class WorldPhysics {
      */
     public PhysicsPath tryQueuePhysicsCheck(BlockPos pos) {
 
+        Block block = world.getBlockState(pos).getBlock();
+
+        if(isIgnoredBlock(block))
+            return null;
+
         if(pos.getY() <= anchorHeight)
             return new PhysicsPath(this, pos, PhysicsPath.Result.IsSupported);
 
@@ -152,7 +161,7 @@ public class WorldPhysics {
             currentPaths.add(path);
             currentChecks.put(pos, path);
 
-            if(isAirOrIgnored(pos))
+            if(world.getBlockState(pos).getBlock() == Blocks.AIR)
                 path.cancel(PhysicsPath.Result.IsUnsupported);
         }
 

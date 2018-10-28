@@ -33,8 +33,6 @@ public class CommonProxy {
             return;
         if(!event.getWorld().isRemote) {
             WorldPhysics physics = getPhysics(event.getWorld());
-            if(physics == null)
-                return;
             physics.cancelPhysicsCheck(event.getPos());
             physics.queuePhysicsCheckAfterRemovalOf(event.getPos());
         }
