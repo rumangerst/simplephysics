@@ -92,7 +92,7 @@ public class PhysicsPath {
             return true;
         }
         else if(worldPhysics.isIgnoredBlock(currentBlock)) {
-            result = Result.IsUnsupported;
+            result = Result.IsSupported;
             return true;
         }
         else if(availableVerticalLimit == 0) {

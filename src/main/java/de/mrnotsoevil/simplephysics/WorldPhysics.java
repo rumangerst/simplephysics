@@ -82,8 +82,11 @@ public class WorldPhysics {
                 Blocks.DOUBLE_PLANT,
                 Blocks.DRAGON_EGG,
                 Blocks.REDSTONE_WIRE,
-                Blocks.GRASS,
-                Blocks.TALLGRASS
+                Blocks.TALLGRASS,
+                Blocks.WATER,
+                Blocks.LAVA,
+                Blocks.FLOWING_WATER,
+                Blocks.FLOWING_LAVA
         };
         if(world.getWorldInfo().getTerrainType() == WorldType.FLAT) {
             this.anchorHeight = 0;
@@ -149,7 +152,7 @@ public class WorldPhysics {
 
         Block block = world.getBlockState(pos).getBlock();
 
-        if(isIgnoredBlock(block))
+        if(isAirOrIgnored(block))
             return null;
 
         if(pos.getY() <= anchorHeight)
