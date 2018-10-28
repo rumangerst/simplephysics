@@ -1,6 +1,7 @@
 package de.mrnotsoevil.simplephysics;
 
 import de.mrnotsoevil.simplephysics.networking.NetworkHandler;
+import net.minecraft.world.Explosion;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
 import net.minecraftforge.common.DimensionManager;
@@ -20,6 +21,7 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Random;
 
 @Mod(modid = SimplePhysics.MODID, name = SimplePhysics.NAME, version = SimplePhysics.VERSION)
 public class SimplePhysics
@@ -27,6 +29,8 @@ public class SimplePhysics
     public static final String MODID = "simplephysics";
     public static final String NAME = "Simple Physics";
     public static final String VERSION = "1.0";
+
+    public static final Random random = new Random();
 
     public static Logger logger;
 

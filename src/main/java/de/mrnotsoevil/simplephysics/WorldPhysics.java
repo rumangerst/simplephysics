@@ -3,25 +3,23 @@ package de.mrnotsoevil.simplephysics;
 import de.mrnotsoevil.simplephysics.networking.MessageBlockCollapse;
 import de.mrnotsoevil.simplephysics.networking.NetworkHandler;
 import net.minecraft.block.Block;
-import net.minecraft.block.SoundType;
 import net.minecraft.block.state.IBlockState;
+import net.minecraft.entity.item.EntityItem;
 import net.minecraft.init.Blocks;
-import net.minecraft.util.EnumParticleTypes;
+import net.minecraft.item.ItemStack;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
-import net.minecraft.world.WorldServer;
+import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import net.minecraftforge.fml.common.registry.ForgeRegistries;
-import net.minecraftforge.fml.relauncher.Side;
-import net.minecraftforge.fml.relauncher.SideOnly;
 
 import java.util.*;
 
 public class WorldPhysics {
 
-    private static PriorityQueue<PhysicsPath> currentPaths = new PriorityQueue<>(Comparator.comparingInt(a -> a.getCheckedPosition().getY()));
+    private PriorityQueue<PhysicsPath> currentPaths = new PriorityQueue<>(Comparator.comparingInt(a -> a.getCheckedPosition().getY()));
 
-    private static Set<BlockPos> currentChecks = new HashSet<>();
+    private Map<BlockPos, PhysicsPath> currentChecks = new HashMap<>();
 
     private World world;
 
@@ -45,32 +43,46 @@ public class WorldPhysics {
     /**
      * Blocks that do not contribute to physics
      */
-    private Block[] ignoredBlocks = getDefaultIgnoredBlocks();
+    private Block[] ignoredBlocks = new Block[0];
 
     /**
      * Include diagonal blocks in calculations
      */
     private boolean includeDiagonalBlocks = true;
 
+    /**
+     * Physics stops working below this height.
+     * It is assumed that all blocks are anchors
+     */
+    private int anchorHeight = 20;
+
+    /**
+     * Assume a block as physically supported if the search is this number of blocks deeper
+     */
+    private int maxVerticalSearch = 16;
+
     public WorldPhysics(World world) {
         this.world = world;
+        this.ignoredBlocks = getDefaultIgnoredBlocks(world);
     }
 
-    public static Block[] getDefaultIgnoredBlocks() {
+    public static Block[] getDefaultIgnoredBlocks(World world) {
         ArrayList<Block> result = new ArrayList<>();
-        result.add(Blocks.CAKE);
-        result.add(Blocks.VINE);
-        result.add(Blocks.BROWN_MUSHROOM);
-        result.add(Blocks.RED_MUSHROOM);
-        result.add(Blocks.LADDER);
-        result.add(Blocks.CARPET);
         for(Block block : ForgeRegistries.BLOCKS.getValues()) {
-            if(block != Blocks.LEAVES && block != Blocks.LEAVES2) {
-                if(block.getSoundType() == SoundType.PLANT)
-                    result.add(block);
+            if(block.getDefaultState().getBlockHardness(world, new BlockPos(0,0,0)) < 0.3) {
+                result.add(block);
+                SimplePhysics.logger.info("Default ignored block " + block);
             }
         }
         return result.toArray(new Block[0]);
+    }
+
+    public boolean isAirOrIgnored(BlockPos pos) {
+        return isAirOrIgnored(world.getBlockState(pos).getBlock());
+    }
+
+    public boolean isAirOrIgnored(Block block) {
+        return block == Blocks.AIR || isIgnoredBlock(block);
     }
 
     public int getMaxHorizontalSearch() {
@@ -115,52 +127,108 @@ public class WorldPhysics {
     }
 
     /**
-     * Checks the physics of given block pos
+     * Triggers a physics check
+     * Will clear any internal caches
      * @param pos
+     * @return
      */
-    public void queuePhysicsCheck(BlockPos pos) {
-        if(world.getBlockState(pos).getBlock() != Blocks.AIR &&
-                !isIgnoredBlock(world.getBlockState(pos).getBlock())) {
-            if(!currentChecks.contains(pos)) {
-//                System.out.println("Queued physics check at " + pos);
-                currentPaths.add(new PhysicsPath(this, pos));
-                currentChecks.add(pos);
-            }
+    public PhysicsPath tryQueuePhysicsCheck(BlockPos pos) {
+
+        if(pos.getY() <= anchorHeight)
+            return new PhysicsPath(this, pos, PhysicsPath.Result.IsSupported);
+
+        PhysicsPath path = currentChecks.getOrDefault(pos, null);
+        if(path == null) {
+            path = new PhysicsPath(this, pos, maxVerticalSearch);
+            currentPaths.add(path);
+            currentChecks.put(pos, path);
+
+            if(isAirOrIgnored(pos))
+                path.cancel(PhysicsPath.Result.IsUnsupported);
+        }
+
+        return path;
+    }
+
+    /**
+     * Triggers an optimized version of a physics check
+     * @param pos
+     * @return
+     */
+    public PhysicsPath tryQueueInternalPhysicsCheck(BlockPos pos, int verticalLimit) {
+
+        if(pos.getY() <= anchorHeight)
+            return new PhysicsPath(this, pos, PhysicsPath.Result.IsSupported);
+        if(isAirOrIgnored(pos))
+           return new PhysicsPath(this, pos, PhysicsPath.Result.IsUnsupported);
+
+        PhysicsPath path = currentChecks.getOrDefault(pos, null);
+        if(path == null) {
+            path = new PhysicsPath(this, pos, verticalLimit);
+            currentPaths.add(path);
+            currentChecks.put(pos, path);
+        }
+
+        return path;
+    }
+
+    public void cancelPhysicsCheck(BlockPos pos) {
+        PhysicsPath path = currentChecks.getOrDefault(pos, null);
+        if(path != null) {
+            if(isAirOrIgnored(pos))
+                path.cancel(PhysicsPath.Result.IsUnsupported);
+            else
+                path.cancel(PhysicsPath.Result.IsSupported);
         }
     }
 
     public void queuePhysicsCheckAfterRemovalOf(BlockPos pos) {
-        queuePhysicsCheck(pos.up());
-        queuePhysicsCheck(pos.north());
-        queuePhysicsCheck(pos.south());
-        queuePhysicsCheck(pos.east());
-        queuePhysicsCheck(pos.west());
+
+        cancelPhysicsCheck(pos);
+
+        tryQueuePhysicsCheck(pos.up());
+        tryQueuePhysicsCheck(pos.north());
+        tryQueuePhysicsCheck(pos.south());
+        tryQueuePhysicsCheck(pos.east());
+        tryQueuePhysicsCheck(pos.west());
 
         if(includeDiagonalBlocks) {
-            queuePhysicsCheck(pos.up().north());
-            queuePhysicsCheck(pos.up().south());
-            queuePhysicsCheck(pos.up().east());
-            queuePhysicsCheck(pos.up().west());
+            tryQueuePhysicsCheck(pos.up().north());
+            tryQueuePhysicsCheck(pos.up().south());
+            tryQueuePhysicsCheck(pos.up().east());
+            tryQueuePhysicsCheck(pos.up().west());
         }
     }
 
     private void breakBlock(BlockPos pos) {
         IBlockState srcBlock = world.getBlockState(pos);
-//        if(!world.isRemote) {
-//            WorldServer ws = (WorldServer)world;
-//            ws.spawnParticle(EnumParticleTypes.BLOCK_DUST, false, pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, 10, 0.0, 0.0, Block.getStateId(srcBlock));
-//            ws.spawnParticle(EnumParticleTypes.CLOUD, pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, 0, 0 ,0);
-//        }
-        NetworkHandler.channel.sendToAll(new MessageBlockCollapse(world, pos, srcBlock));
-        world.setBlockState(pos, Blocks.AIR.getDefaultState());
+        if(isAirOrIgnored(pos))
+            return;
+        PhysicsBreakBlockEvent event = new PhysicsBreakBlockEvent(this, pos);
+        event.setDrops(new ItemStack[] {
+                new ItemStack(srcBlock.getBlock().getItemDropped(srcBlock, SimplePhysics.random, 0),
+                        srcBlock.getBlock().quantityDropped(srcBlock, 0, SimplePhysics.random))
+        });
+        if(!MinecraftForge.EVENT_BUS.post(event)) {
+            NetworkHandler.channel.sendToAll(new MessageBlockCollapse(world, pos, srcBlock));
+            world.setBlockState(pos, Blocks.AIR.getDefaultState());
+            if(event.getDrops() != null) {
+                for(ItemStack stack : event.getDrops()) {
+                    if(stack != null)
+                        world.spawnEntity(new EntityItem(world, pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, stack));
+                }
+            }
+        }
+        queuePhysicsCheckAfterRemovalOf(pos);
     }
 
     public void tick(TickEvent.ServerTickEvent event) {
         if(event.phase == TickEvent.Phase.END) {
-            if(!currentPaths.isEmpty()) {
+            while(!currentPaths.isEmpty()) {
                 PhysicsPath path = currentPaths.peek();
                 for(int i = 0; i < calculationSpeed - 1; ++i) {
-                    path.iterate();
+                    if(path.iterate())
+                        break;
                 }
                 if (path.iterate()) {
 //                System.out.println("Physics calculation finished and returned " + path.getResult());
@@ -170,8 +238,10 @@ public class WorldPhysics {
                     // Take a look at the result
                     if (path.getResult() == PhysicsPath.Result.IsUnsupported) {
                         breakBlock(path.getCheckedPosition());
-                        queuePhysicsCheckAfterRemovalOf(path.getCheckedPosition());
                     }
+                }
+                else {
+                    break;
                 }
             }
         }
@@ -204,5 +274,21 @@ public class WorldPhysics {
 
     public void setIncludeDiagonalBlocks(boolean includeDiagonalBlocks) {
         this.includeDiagonalBlocks = includeDiagonalBlocks;
+    }
+
+    public int getAnchorHeight() {
+        return anchorHeight;
+    }
+
+    public void setAnchorHeight(int anchorHeight) {
+        this.anchorHeight = anchorHeight;
+    }
+
+    public int getMaxVerticalSearch() {
+        return maxVerticalSearch;
+    }
+
+    public void setMaxVerticalSearch(int maxVerticalSearch) {
+        this.maxVerticalSearch = maxVerticalSearch;
     }
 }

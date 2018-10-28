@@ -3,27 +3,36 @@ package de.mrnotsoevil.simplephysics;
 import net.minecraft.block.Block;
 import net.minecraft.init.Blocks;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.World;
+import net.minecraft.world.chunk.Chunk;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Stack;
+import java.util.*;
 
 public class PhysicsPath {
     private WorldPhysics worldPhysics;
     private BlockPos checkedPosition;
     private boolean[] visited;
     private Stack<BlockPos> toVisit = new Stack<>();
+    private int availableVerticalLimit = 0;
 
     private List<PhysicsPath> pathsBelow = new ArrayList<>();
     private Result result = Result.Undecided;
 
 
-    public PhysicsPath(WorldPhysics world, BlockPos checkedPosition) {
+    public PhysicsPath(WorldPhysics world, BlockPos checkedPosition, int availableVerticalLimit) {
         this.worldPhysics = world;
         this.checkedPosition = checkedPosition;
         this.visited = null;
         this.toVisit.push(checkedPosition);
+        this.availableVerticalLimit = availableVerticalLimit;
+    }
+
+    public PhysicsPath(WorldPhysics world, BlockPos checkedPosition, Result result) {
+        if(result == Result.Undecided) {
+            throw new RuntimeException("Cannot instantiate predetermined path with unknown result!");
+        }
+        this.worldPhysics = world;
+        this.checkedPosition = checkedPosition;
+        this.result = result;
     }
 
     private void visit(BlockPos other) {
@@ -57,6 +66,13 @@ public class PhysicsPath {
         }
     }
 
+    public void cancel(Result result) {
+        if(result == Result.Undecided) {
+            throw new RuntimeException("Cannot cancel with unknown result!");
+        }
+        this.result = result;
+    }
+
     /**
      * Iterates the path. Returns true if it is done
      * @return
@@ -65,34 +81,54 @@ public class PhysicsPath {
 
         if(result != Result.Undecided)
             return true;
-        if(worldPhysics.getWorld().getBlockState(getCheckedPosition()).getBlock() == Blocks.AIR ||
-                worldPhysics.isIgnoredBlock(worldPhysics.getWorld().getBlockState(getCheckedPosition()).getBlock())) {
-            result = Result.Canceled;
+        Chunk chunk = worldPhysics.getWorld().getChunkFromBlockCoords(checkedPosition);
+        if(chunk.unloadQueued || !chunk.isLoaded()) {
+            result = Result.IsSupported;
+            return true;
+        }
+        Block currentBlock = worldPhysics.getWorld().getBlockState(getCheckedPosition()).getBlock();
+        if(currentBlock == Blocks.AIR) {
+            result = Result.IsUnsupported;
+            return true;
+        }
+        else if(worldPhysics.isIgnoredBlock(currentBlock)) {
+            result = Result.IsUnsupported;
+            return true;
+        }
+        else if(availableVerticalLimit == 0) {
+            result = Result.IsSupported;
             return true;
         }
 
         if(!pathsBelow.isEmpty()) {
-            PhysicsPath p = pathsBelow.get(0);
-            if(p.iterate()) {
-                if(p.getResult() == Result.IsSupported) {
-                    result = Result.IsSupported;
-                    pathsBelow.clear();
-                    return true;
-                }
-                else {
-                    // Quick-delete
-                    if(pathsBelow.size() == 1) {
+            for(int i = 0; i < pathsBelow.size(); ++i) {
+                PhysicsPath p = pathsBelow.get(i);
+                if(p.getResult() != Result.Undecided) {
+                    if((getCheckedPosition().getY() - p.getLowestY()) >= worldPhysics.getMaxHorizontalSearch()) {
+                        result = Result.IsSupported;
                         pathsBelow.clear();
+                        return true;
+                    }
+                    if(p.getResult() == Result.IsSupported) {
+                        result = Result.IsSupported;
+                        pathsBelow.clear();
+                        return true;
                     }
                     else {
-                        pathsBelow.set(0, pathsBelow.get(pathsBelow.size() - 1));
-                        pathsBelow.remove(pathsBelow.size() - 1);
+                        // Quick-delete
+                        if(pathsBelow.size() == 1) {
+                            pathsBelow.clear();
+                        }
+                        else {
+                            pathsBelow.set(0, pathsBelow.get(pathsBelow.size() - 1));
+                            pathsBelow.remove(pathsBelow.size() - 1);
+                        }
                     }
                 }
             }
-            return false;
         }
-        else if(!toVisit.empty()) {
+
+        if(!toVisit.empty()) {
             BlockPos currentPos = toVisit.pop();
             Block block = worldPhysics.getWorld().getBlockState(currentPos).getBlock();
 
@@ -102,7 +138,7 @@ public class PhysicsPath {
                 result = Result.IsSupported;
                 return true;
             }
-            else if(block == Blocks.AIR) {
+            else if(worldPhysics.isAirOrIgnored(block)) {
                 return false;
             }
 
@@ -114,7 +150,7 @@ public class PhysicsPath {
                 return true;
             }
             else if(blockBelow != Blocks.AIR && !worldPhysics.isIgnoredBlock(blockBelow)) {
-                pathsBelow.add(new PhysicsPath(worldPhysics, posBelow));
+                pathsBelow.add(worldPhysics.tryQueueInternalPhysicsCheck(posBelow, availableVerticalLimit - 1));
             }
 
             // Check the blocks to the side (if not visited)
@@ -139,6 +175,14 @@ public class PhysicsPath {
         }
     }
 
+    public int getLowestY() {
+        int y = getCheckedPosition().getY();
+        for(PhysicsPath p : pathsBelow) {
+            y = Math.min(p.getLowestY(), y);
+        }
+        return y;
+    }
+
     public Result getResult() {
         return result;
     }
@@ -154,7 +198,6 @@ public class PhysicsPath {
     public enum Result {
         Undecided,
         IsSupported,
-        IsUnsupported,
-        Canceled
+        IsUnsupported
     }
 }
