@@ -63,18 +63,27 @@ public class WorldPhysics {
 
     public WorldPhysics(World world) {
         this.world = world;
-        this.ignoredBlocks = getDefaultIgnoredBlocks(world);
-    }
-
-    public static Block[] getDefaultIgnoredBlocks(World world) {
-        ArrayList<Block> result = new ArrayList<>();
-        for(Block block : ForgeRegistries.BLOCKS.getValues()) {
-            if(block.getDefaultState().getBlockHardness(world, new BlockPos(0,0,0)) < 0.3) {
-                result.add(block);
-                SimplePhysics.logger.info("Default ignored block " + block);
-            }
-        }
-        return result.toArray(new Block[0]);
+        this.ignoredBlocks = new Block[] {
+                Blocks.CAKE,
+                Blocks.CACTUS,
+                Blocks.LEAVES2,
+                Blocks.LEAVES,
+                Blocks.BROWN_MUSHROOM,
+                Blocks.RED_MUSHROOM,
+                Blocks.VINE,
+                Blocks.BEETROOTS,
+                Blocks.BREWING_STAND,
+                Blocks.CARROTS,
+                Blocks.DAYLIGHT_DETECTOR,
+                Blocks.DAYLIGHT_DETECTOR_INVERTED,
+                Blocks.DEADBUSH,
+                Blocks.DETECTOR_RAIL,
+                Blocks.DOUBLE_PLANT,
+                Blocks.DRAGON_EGG,
+                Blocks.REDSTONE_WIRE,
+                Blocks.GRASS,
+                Blocks.TALLGRASS
+        };
     }
 
     public boolean isAirOrIgnored(BlockPos pos) {
