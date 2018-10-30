@@ -6,6 +6,7 @@ import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
 import net.minecraftforge.common.DimensionManager;
 import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.common.config.Configuration;
 import net.minecraftforge.event.world.BlockEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.Mod.EventHandler;
@@ -34,6 +35,8 @@ public class SimplePhysics
 
     public static Logger logger;
 
+    public static Configuration configuration;
+
     @SidedProxy(serverSide = "de.mrnotsoevil.simplephysics.CommonProxy", clientSide = "de.mrnotsoevil.simplephysics.ClientProxy")
     public static CommonProxy proxy;
 
@@ -43,8 +46,16 @@ public class SimplePhysics
     public void preInit(FMLPreInitializationEvent event)
     {
         logger = event.getModLog();
+        configuration = new Configuration(event.getSuggestedConfigurationFile());
         NetworkHandler.init();
         proxy.preInit(event);
+
+        try {
+            configuration.load();
+        }
+        catch(Exception e) {
+            e.printStackTrace();
+        }
     }
 
     @EventHandler
