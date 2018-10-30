@@ -331,6 +331,8 @@ public class WorldPhysics {
                         srcBlock.getBlock().quantityDropped(srcBlock, 0, SimplePhysics.random))
         });
         if (!MinecraftForge.EVENT_BUS.post(event)) {
+            if (isAirOrIgnored(pos))
+                return;
             NetworkHandler.channel.sendToAll(new MessageBlockCollapse(world, pos, srcBlock));
             world.setBlockState(pos, Blocks.AIR.getDefaultState());
             if (event.getDrops() != null) {
