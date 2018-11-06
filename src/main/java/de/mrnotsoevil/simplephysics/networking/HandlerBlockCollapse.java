@@ -2,7 +2,6 @@ package de.mrnotsoevil.simplephysics.networking;
 
 import de.mrnotsoevil.simplephysics.SimplePhysics;
 import net.minecraft.block.Block;
-import net.minecraft.client.Minecraft;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.util.math.BlockPos;
 import net.minecraftforge.fml.common.network.simpleimpl.IMessage;
@@ -13,7 +12,7 @@ public class HandlerBlockCollapse implements IMessageHandler<MessageBlockCollaps
     @Override
     public IMessage onMessage(MessageBlockCollapse message, MessageContext ctx) {
         NetworkHandler.getClientThreadListener().addScheduledTask(() -> {
-            EntityPlayer player = Minecraft.getMinecraft().player;
+            EntityPlayer player = ctx.getServerHandler().player;
             if(message.getWorld() == player.getEntityWorld().provider.getDimension()) {
                 SimplePhysics.proxy.effectBlockCollapsed(new BlockPos(message.getPosX(), message.getPosY(), message.getPosZ()), Block.getStateById(message.getBlockStateId()));
             }
